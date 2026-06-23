@@ -27,5 +27,5 @@ jobs:
         env:
           SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
           SENDER_PASSWORD: ${{ secrets.SENDER_PASSWORD }}
-          RECEIVER_EMAIL: "jaggachinmay4@gmail.com"
+          RECEIVER_EMAIL: "jaggachinmay4@gmail.com,monikajagga12@gmail.com"
         run: python news_agent.py
