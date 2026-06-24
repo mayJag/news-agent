@@ -1,9 +1,10 @@
 import feedparser
 import smtplib
 import os
+import time
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 # Define the RSS feeds we want to fetch
 FEEDS = {
@@ -121,7 +122,25 @@ def send_email(html_content):
     except Exception as e:
         print(f"Failed to send email: {e}")
 
+def wait_until_target_time(target_hour, target_minute):
+    \"\"\"Pauses execution until the exact target time in IST.\"\"\"
+    # IST is UTC + 5:30
+    ist = timezone(timedelta(hours=5, minutes=30))
+    now = datetime.now(ist)
+    target = now.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
+    
+    if now >= target:
+        print(f"Target time {target.strftime('%H:%M:%S')} IST has already passed. Executing immediately.")
+        return
+        
+    wait_seconds = (target - now).total_seconds()
+    print(f"Waiting for {wait_seconds:.0f} seconds until exactly {target.strftime('%H:%M:%S')} IST...")
+    time.sleep(wait_seconds)
+
 if __name__ == "__main__":
+    # Wait until exactly 9:00 AM IST
+    wait_until_target_time(9, 0)
+    
     print("Fetching news from Google News RSS feeds...")
     html_email = generate_html_email()
     print("Sending email digest...")

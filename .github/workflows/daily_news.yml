@@ -2,8 +2,9 @@ name: Daily News Agent
 
 on:
   schedule:
-    # 03:30 UTC is exactly 09:00 AM IST
-    - cron: '30 3 * * *'
+    # 03:17 UTC is exactly 08:47 AM IST. We run at an odd minute to bypass the GitHub Actions queue,
+    # and the python script will pause itself until exactly 09:00 AM IST before sending the email.
+    - cron: '17 3 * * *'
   workflow_dispatch: # Allows manual triggering from the GitHub Actions tab
 
 jobs:
