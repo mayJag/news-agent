@@ -123,7 +123,7 @@ def send_email(html_content):
         print(f"Failed to send email: {e}")
 
 def wait_until_target_time(target_hour, target_minute):
-    \"\"\"Pauses execution until the exact target time in IST.\"\"\"
+    """Pauses execution until the exact target time in IST."""
     # IST is UTC + 5:30
     ist = timezone(timedelta(hours=5, minutes=30))
     now = datetime.now(ist)
