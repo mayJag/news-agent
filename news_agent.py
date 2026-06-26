@@ -7,10 +7,10 @@ from datetime import datetime
 
 # Define the RSS feeds we want to fetch
 FEEDS = {
-    "Global News": "https://news.google.com/rss",
-    "Indian News": "https://news.google.com/rss/headlines/section/geo/IN",
-    "Technology": "https://news.google.com/rss/headlines/section/topic/TECHNOLOGY",
-    "Sports": "https://news.google.com/rss/headlines/section/topic/SPORTS"
+    "Global News": "https://news.google.com/rss/headlines/section/topic/WORLD?hl=en-IN&gl=IN&ceid=IN:en",
+    "Indian News": "https://news.google.com/rss?hl=en-IN&gl=IN&ceid=IN:en",
+    "Technology": "https://news.google.com/rss/headlines/section/topic/TECHNOLOGY?hl=en-IN&gl=IN&ceid=IN:en",
+    "Sports": "https://news.google.com/rss/headlines/section/topic/SPORTS?hl=en-IN&gl=IN&ceid=IN:en"
 }
 
 def get_news(feed_url, limit=5):
