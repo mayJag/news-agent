@@ -1,166 +1,316 @@
-import feedparser
-import smtplib
+import hashlib
+import html
 import os
+import re
+import smtplib
+import sys
+from dataclasses import dataclass
+from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from datetime import datetime
 from email.utils import parsedate_to_datetime
 
-# Define the RSS feeds we want to fetch
+import feedparser
+import requests
+
+
 FEEDS = {
     "Global News": "https://news.google.com/rss/headlines/section/topic/WORLD?hl=en-IN&gl=IN&ceid=IN:en",
     "Indian News": "https://news.google.com/rss?hl=en-IN&gl=IN&ceid=IN:en",
     "Technology": "https://news.google.com/rss/headlines/section/topic/TECHNOLOGY?hl=en-IN&gl=IN&ceid=IN:en",
-    "Sports": "https://news.google.com/rss/headlines/section/topic/SPORTS?hl=en-IN&gl=IN&ceid=IN:en"
+    "Sports": "https://news.google.com/rss/headlines/section/topic/SPORTS?hl=en-IN&gl=IN&ceid=IN:en",
 }
 
-def get_news(feed_url, limit=5):
-    """Fetches the top 'limit' news articles from the RSS feed."""
-    feed = feedparser.parse(feed_url)
-    entries_html = []
-    
-    for entry in feed.entries[:limit]:
-        # Extract publisher from Google News title format "Headline - Publisher"
-        title_parts = entry.title.rsplit(' - ', 1)
-        headline = title_parts[0]
-        publisher = title_parts[1] if len(title_parts) > 1 else "Google News"
-        
-        # Parse published date if available
-        time_str = ""
-        if hasattr(entry, 'published'):
-            try:
-                dt = parsedate_to_datetime(entry.published)
-                time_str = dt.strftime("%b %d, %H:%M")
-            except:
-                time_str = entry.published
+SECTION_META = {
+    "Global News": {"label": "WORLD", "accent": "#2563eb"},
+    "Indian News": {"label": "INDIA", "accent": "#059669"},
+    "Technology": {"label": "TECH", "accent": "#7c3aed"},
+    "Sports": {"label": "SPORTS", "accent": "#ea580c"},
+}
 
-        entries_html.append(f"""
-            <div style="margin-bottom: 16px; padding: 20px; background-color: #ffffff; border-radius: 12px; border: 1px solid #eaeaea; box-shadow: 0 4px 6px rgba(0,0,0,0.02);">
-                <a href="{entry.link}" style="text-decoration: none; color: #111827; font-weight: 600; font-size: 16px; line-height: 1.4; display: block; margin-bottom: 14px;">
-                    {headline}
-                </a>
-                <div style="display: table; width: 100%; font-size: 12px;">
-                    <div style="display: table-cell; vertical-align: middle;">
-                        <span style="background-color: #ecfdf5; color: #059669; padding: 5px 12px; border-radius: 20px; font-weight: 500; border: 1px solid #d1fae5;">
-                            {publisher}
-                        </span>
-                    </div>
-                    <div style="display: table-cell; vertical-align: middle; text-align: right; color: #6b7280; font-weight: 500;">
-                        {time_str}
-                    </div>
-                </div>
-            </div>
-        """)
-    return "\n".join(entries_html)
+DEFAULT_LIMIT = int(os.environ.get("NEWS_LIMIT", "5"))
+REQUEST_TIMEOUT_SECONDS = int(os.environ.get("REQUEST_TIMEOUT_SECONDS", "12"))
 
-def generate_html_email():
-    """Generates the HTML content for the email."""
-    date_str = datetime.now().strftime('%A, %B %d')
-    
-    html_content = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    </head>
-    <body style="font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #374151; margin: 0; padding: 0; background-color: #f3f4f6;">
-      
-      <!-- Main Container -->
-      <div style="max-width: 650px; margin: 0 auto; background-color: #f9fafb;">
-        
-        <!-- Header -->
-        <div style="background: linear-gradient(135deg, #064e3b 0%, #059669 100%); padding: 50px 30px; text-align: center; color: white;">
-            <div style="font-size: 14px; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 10px; opacity: 0.8; font-weight: 600;">Morning Briefing</div>
-            <h1 style="margin: 0; font-size: 34px; font-weight: 800; letter-spacing: -0.5px;">The Daily Digest</h1>
-            <div style="margin-top: 20px; font-size: 15px; opacity: 0.95; background-color: rgba(255,255,255,0.2); display: inline-block; padding: 6px 18px; border-radius: 20px;">
-                📅 {date_str}
-            </div>
-        </div>
-        
-        <!-- Content Body -->
-        <div style="padding: 40px 25px;">
-    """
-    
-    icons = {
-        "Global News": "🌍",
-        "Indian News": "🇮🇳",
-        "Technology": "💻",
-        "Sports": "🏆"
-    }
-    
-    for category, url in FEEDS.items():
-        icon = icons.get(category, "📰")
-        html_content += f"""
-          <div style="margin-bottom: 45px;">
-            <h2 style="color: #111827; border-bottom: 2px solid #e5e7eb; padding-bottom: 12px; margin-top: 0; font-size: 22px; font-weight: 700;">
-              <span style="margin-right: 12px; font-size: 24px;">{icon}</span>{category}
-            </h2>
-            <div style="margin-top: 25px;">
-        """
-        html_content += get_news(url)
-        html_content += """
-            </div>
-          </div>
-        """
-        
-    html_content += """
-        </div>
-        
-        <!-- Footer -->
-        <div style="background-color: #e5e7eb; padding: 35px 20px; text-align: center;">
-            <p style="margin: 0; font-size: 14px; color: #4b5563; font-weight: 600;">🤖 Generated autonomously by your News Agent</p>
-            <p style="margin: 10px 0 0 0; font-size: 12px; color: #6b7280;">You are receiving this because you are subscribed to the morning digest.</p>
-        </div>
-        
-      </div>
-    </body>
-    </html>
-    """
-    return html_content
 
-def send_email(html_content):
-    """Sends the HTML email using Gmail SMTP to multiple recipients."""
-    sender_email = os.environ.get("SENDER_EMAIL")
-    sender_password = os.environ.get("SENDER_PASSWORD")
-    receiver_emails_str = os.environ.get("RECEIVER_EMAIL")
-    
-    if not all([sender_email, sender_password, receiver_emails_str]):
-        print("Error: Missing email credentials in environment variables.")
-        return
+@dataclass(frozen=True)
+class Article:
+    headline: str
+    publisher: str
+    link: str
+    published: str
 
-    # Split the comma-separated string into a list of emails
-    receiver_emails = [email.strip() for email in receiver_emails_str.split(',')]
+
+def normalize_title(title: str) -> str:
+    """Create a stable comparison key for duplicate detection."""
+    title = title.rsplit(" - ", 1)[0]
+    title = re.sub(r"[^a-z0-9]+", " ", title.lower()).strip()
+    return re.sub(r"\s+", " ", title)
+
+
+def short_digest(value: str) -> str:
+    return hashlib.sha1(value.encode("utf-8")).hexdigest()[:10]
+
+
+def format_published(entry) -> str:
+    published = getattr(entry, "published", "")
+    if not published:
+        return "Fresh update"
 
     try:
-        # Connect to Gmail SMTP server
-        server = smtplib.SMTP_SSL("smtp.gmail.com", 465)
+        dt = parsedate_to_datetime(published)
+        return dt.strftime("%b %d, %H:%M")
+    except (TypeError, ValueError, IndexError):
+        return published
+
+
+def fetch_articles(category: str, feed_url: str, seen_titles: set[str], limit: int) -> list[Article]:
+    response = requests.get(
+        feed_url,
+        timeout=REQUEST_TIMEOUT_SECONDS,
+        headers={"User-Agent": "DailyNewsAgent/1.0 (+https://github.com/mayJag/news-agent)"},
+    )
+    response.raise_for_status()
+
+    feed = feedparser.parse(response.text)
+    if getattr(feed, "bozo", False):
+        print(f"Warning: RSS parser reported malformed feed for {category}.")
+
+    articles = []
+    for entry in feed.entries:
+        raw_title = getattr(entry, "title", "").strip()
+        link = getattr(entry, "link", "").strip()
+        if not raw_title or not link:
+            continue
+
+        title_parts = raw_title.rsplit(" - ", 1)
+        headline = title_parts[0].strip()
+        publisher = title_parts[1].strip() if len(title_parts) > 1 else "Google News"
+        dedupe_key = normalize_title(headline)
+
+        if not dedupe_key or dedupe_key in seen_titles:
+            continue
+
+        seen_titles.add(dedupe_key)
+        articles.append(
+            Article(
+                headline=headline,
+                publisher=publisher,
+                link=link,
+                published=format_published(entry),
+            )
+        )
+
+        if len(articles) >= limit:
+            break
+
+    print(f"{category}: {len(articles)} articles")
+    return articles
+
+
+def fetch_all_news(limit: int = DEFAULT_LIMIT) -> dict[str, list[Article]]:
+    news = {}
+    seen_titles: set[str] = set()
+
+    for category, url in FEEDS.items():
+        try:
+            news[category] = fetch_articles(category, url, seen_titles, limit)
+        except requests.RequestException as exc:
+            print(f"Warning: failed to fetch {category}: {exc}")
+            news[category] = []
+
+    return news
+
+
+def render_article_card(article: Article, index: int, accent: str) -> str:
+    headline = html.escape(article.headline)
+    publisher = html.escape(article.publisher)
+    published = html.escape(article.published)
+    link = html.escape(article.link, quote=True)
+
+    return f"""
+      <tr>
+        <td style="padding: 0 0 14px 0;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background: #ffffff; border: 1px solid #e5e7eb; border-radius: 14px;">
+            <tr>
+              <td style="padding: 18px 18px 16px 18px;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td width="34" valign="top">
+                      <div style="width: 28px; height: 28px; border-radius: 999px; background: {accent}; color: #ffffff; text-align: center; font-size: 13px; line-height: 28px; font-weight: 700;">{index}</div>
+                    </td>
+                    <td valign="top">
+                      <a href="{link}" style="color: #111827; text-decoration: none; font-size: 16px; line-height: 1.45; font-weight: 700;">{headline}</a>
+                      <div style="padding-top: 12px;">
+                        <span style="display: inline-block; color: {accent}; background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 999px; padding: 5px 10px; font-size: 12px; font-weight: 700;">{publisher}</span>
+                        <span style="display: inline-block; color: #6b7280; font-size: 12px; font-weight: 600; padding-left: 8px;">{published}</span>
+                      </div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    """
+
+
+def render_empty_state() -> str:
+    return """
+      <tr>
+        <td style="padding: 18px; background: #ffffff; border: 1px dashed #d1d5db; border-radius: 14px; color: #6b7280; font-size: 14px;">
+          No fresh stories available in this section right now.
+        </td>
+      </tr>
+    """
+
+
+def render_section(category: str, articles: list[Article]) -> str:
+    meta = SECTION_META.get(category, {"label": "NEWS", "accent": "#111827"})
+    label = html.escape(meta["label"])
+    accent = meta["accent"]
+    category_text = html.escape(category)
+
+    article_rows = "\n".join(
+        render_article_card(article, index, accent)
+        for index, article in enumerate(articles, start=1)
+    ) or render_empty_state()
+
+    return f"""
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 34px;">
+        <tr>
+          <td style="padding: 0 0 14px 0;">
+            <div style="font-size: 11px; letter-spacing: 1.4px; color: {accent}; font-weight: 800;">{label}</div>
+            <h2 style="margin: 4px 0 0 0; color: #111827; font-size: 22px; line-height: 1.25; font-weight: 800;">{category_text}</h2>
+          </td>
+        </tr>
+        {article_rows}
+      </table>
+    """
+
+
+def generate_html_email(news_data: dict[str, list[Article]]) -> str:
+    date_str = html.escape(datetime.now().strftime("%A, %B %d"))
+    total_articles = sum(len(articles) for articles in news_data.values())
+
+    sections = "\n".join(
+        render_section(category, news_data.get(category, []))
+        for category in FEEDS
+    )
+
+    return f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Daily Digest</title>
+</head>
+<body style="margin: 0; padding: 0; background: #eef2f7; color: #111827; font-family: Arial, Helvetica, sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background: #eef2f7; padding: 24px 12px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width: 680px; background: #f8fafc; border-radius: 20px; overflow: hidden; border: 1px solid #dbe3ef;">
+          <tr>
+            <td style="background: #111827; padding: 34px 30px 30px 30px;">
+              <div style="color: #93c5fd; font-size: 12px; letter-spacing: 2px; font-weight: 800;">MORNING BRIEFING</div>
+              <h1 style="margin: 8px 0 10px 0; color: #ffffff; font-size: 34px; line-height: 1.1; font-weight: 800;">The Daily Digest</h1>
+              <div style="color: #d1d5db; font-size: 15px; line-height: 1.5;">{date_str} · {total_articles} selected stories from Google News</div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 28px 24px 6px 24px;">
+              {sections}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 24px 28px 30px 28px; background: #e5e7eb; text-align: center;">
+              <div style="color: #374151; font-size: 14px; font-weight: 700;">Generated by your News Agent</div>
+              <div style="color: #6b7280; font-size: 12px; margin-top: 8px;">You are receiving this because you are subscribed to the morning digest.</div>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>"""
+
+
+def generate_text_email(news_data: dict[str, list[Article]]) -> str:
+    lines = [
+        "The Daily Digest",
+        datetime.now().strftime("%A, %B %d"),
+        "",
+    ]
+
+    for category in FEEDS:
+        lines.append(category.upper())
+        articles = news_data.get(category, [])
+        if not articles:
+            lines.append("- No fresh stories available.")
+        for index, article in enumerate(articles, start=1):
+            lines.append(f"{index}. {article.headline} ({article.publisher})")
+            lines.append(f"   {article.link}")
+        lines.append("")
+
+    lines.append("Generated by your News Agent")
+    return "\n".join(lines)
+
+
+def get_recipients() -> list[str]:
+    receiver_emails_str = os.environ.get("RECEIVER_EMAIL", "")
+    recipients = [email.strip() for email in receiver_emails_str.split(",") if email.strip()]
+    if not recipients:
+        raise RuntimeError("RECEIVER_EMAIL is missing or empty.")
+    return recipients
+
+
+def send_email(html_content: str, text_content: str) -> None:
+    sender_email = os.environ.get("SENDER_EMAIL")
+    sender_password = os.environ.get("SENDER_PASSWORD")
+    if not sender_email or not sender_password:
+        raise RuntimeError("SENDER_EMAIL and SENDER_PASSWORD must be set.")
+
+    recipients = get_recipients()
+    subject = f"Daily News Digest - {datetime.now().strftime('%d %b %Y')}"
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as server:
         server.login(sender_email, sender_password)
-        
-        # Send individual emails to each recipient so they don't see each other's addresses
-        for receiver_email in receiver_emails:
-            if not receiver_email:
-                continue
-                
+
+        for receiver_email in recipients:
             msg = MIMEMultipart("alternative")
-            msg["Subject"] = f"Daily News Digest - {datetime.now().strftime('%d %b %Y')}"
+            msg["Subject"] = subject
             msg["From"] = sender_email
             msg["To"] = receiver_email
-            
-            # Attach HTML content
-            part = MIMEText(html_content, "html")
-            msg.attach(part)
-            
+            msg.attach(MIMEText(text_content, "plain", "utf-8"))
+            msg.attach(MIMEText(html_content, "html", "utf-8"))
+
             server.sendmail(sender_email, receiver_email, msg.as_string())
-            print(f"Email sent successfully to {receiver_email}!")
-            
-        server.quit()
-    except Exception as e:
-        print(f"Failed to send email: {e}")
+            print(f"Email sent to {receiver_email}")
+
+    print(f"Sent digest to {len(recipients)} recipient(s).")
+
+
+def main() -> None:
+    print("Fetching news from Google News RSS feeds...")
+    news_data = fetch_all_news()
+    article_count = sum(len(articles) for articles in news_data.values())
+    if article_count == 0:
+        raise RuntimeError("No articles fetched from any feed.")
+
+    print(f"Rendering digest with {article_count} article(s)...")
+    html_email = generate_html_email(news_data)
+    text_email = generate_text_email(news_data)
+    print(f"Digest id: {short_digest(text_email)}")
+
+    print("Sending email digest...")
+    send_email(html_email, text_email)
+    print("Agent execution complete.")
+
 
 if __name__ == "__main__":
-    print("Fetching news from Google News RSS feeds...")
-    html_email = generate_html_email()
-    print("Sending email digest...")
-    send_email(html_email)
-    print("Agent execution complete.")
+    try:
+        main()
+    except Exception as exc:
+        print(f"Agent failed: {exc}", file=sys.stderr)
+        sys.exit(1)
