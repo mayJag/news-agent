@@ -4,6 +4,7 @@ import os
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import datetime
+from email.utils import parsedate_to_datetime
 
 # Define the RSS feeds we want to fetch
 FEEDS = {
@@ -16,56 +17,90 @@ FEEDS = {
 def get_news(feed_url, limit=5):
     """Fetches the top 'limit' news articles from the RSS feed."""
     feed = feedparser.parse(feed_url)
-    entries = []
+    entries_html = []
+    
     for entry in feed.entries[:limit]:
-        entries.append(
-            f"<li style='margin-bottom: 12px; padding: 12px 15px; background-color: #ffffff; border-radius: 8px; border-left: 4px solid #2a5298; box-shadow: 0 2px 4px rgba(0,0,0,0.02);'>"
-            f"<a href='{entry.link}' style='text-decoration: none; color: #2c3e50; font-weight: 500; display: block; font-size: 15px;'>{entry.title}</a>"
-            f"</li>"
-        )
-    return "\n".join(entries)
+        # Extract publisher from Google News title format "Headline - Publisher"
+        title_parts = entry.title.rsplit(' - ', 1)
+        headline = title_parts[0]
+        publisher = title_parts[1] if len(title_parts) > 1 else "Google News"
+        
+        # Parse published date if available
+        time_str = ""
+        if hasattr(entry, 'published'):
+            try:
+                dt = parsedate_to_datetime(entry.published)
+                time_str = dt.strftime("%b %d, %H:%M")
+            except:
+                time_str = entry.published
+
+        entries_html.append(f"""
+            <div style="margin-bottom: 16px; padding: 20px; background-color: #ffffff; border-radius: 12px; border: 1px solid #eaeaea; box-shadow: 0 4px 6px rgba(0,0,0,0.02);">
+                <a href="{entry.link}" style="text-decoration: none; color: #111827; font-weight: 600; font-size: 16px; line-height: 1.4; display: block; margin-bottom: 14px;">
+                    {headline}
+                </a>
+                <div style="display: table; width: 100%; font-size: 12px;">
+                    <div style="display: table-cell; vertical-align: middle;">
+                        <span style="background-color: #ecfdf5; color: #059669; padding: 5px 12px; border-radius: 20px; font-weight: 500; border: 1px solid #d1fae5;">
+                            {publisher}
+                        </span>
+                    </div>
+                    <div style="display: table-cell; vertical-align: middle; text-align: right; color: #6b7280; font-weight: 500;">
+                        {time_str}
+                    </div>
+                </div>
+            </div>
+        """)
+    return "\n".join(entries_html)
 
 def generate_html_email():
     """Generates the HTML content for the email."""
-    html_content = """
+    date_str = datetime.now().strftime('%A, %B %d')
+    
+    html_content = f"""
     <!DOCTYPE html>
     <html>
     <head>
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
     </head>
-    <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; max-width: 650px; margin: 0 auto; padding: 20px; background-color: #f4f7f6;">
-      <div style="background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
+    <body style="font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #374151; margin: 0; padding: 0; background-color: #f3f4f6;">
+      
+      <!-- Main Container -->
+      <div style="max-width: 650px; margin: 0 auto; background-color: #f9fafb;">
         
         <!-- Header -->
-        <div style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); padding: 35px 20px; text-align: center; color: white;">
-            <h1 style="margin: 0; font-size: 28px; font-weight: 600; letter-spacing: 1px;">🌍 Daily News Digest</h1>
-            <p style="margin: 10px 0 0 0; font-size: 16px; opacity: 0.9;">Your morning briefing is here</p>
+        <div style="background: linear-gradient(135deg, #064e3b 0%, #059669 100%); padding: 50px 30px; text-align: center; color: white;">
+            <div style="font-size: 14px; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 10px; opacity: 0.8; font-weight: 600;">Morning Briefing</div>
+            <h1 style="margin: 0; font-size: 34px; font-weight: 800; letter-spacing: -0.5px;">The Daily Digest</h1>
+            <div style="margin-top: 20px; font-size: 15px; opacity: 0.95; background-color: rgba(255,255,255,0.2); display: inline-block; padding: 6px 18px; border-radius: 20px;">
+                📅 {date_str}
+            </div>
         </div>
         
-        <!-- Content -->
-        <div style="padding: 30px 20px; background-color: #fbfcfd;">
+        <!-- Content Body -->
+        <div style="padding: 40px 25px;">
     """
     
     icons = {
-        "Global News": "🌐",
+        "Global News": "🌍",
         "Indian News": "🇮🇳",
         "Technology": "💻",
-        "Sports": "🏅"
+        "Sports": "🏆"
     }
     
     for category, url in FEEDS.items():
         icon = icons.get(category, "📰")
         html_content += f"""
-          <div style="margin-bottom: 35px;">
-            <h2 style="color: #1e3c72; border-bottom: 2px solid #eef2f5; padding-bottom: 10px; margin-top: 0; font-size: 20px;">
-              <span style="margin-right: 8px;">{icon}</span>{category}
+          <div style="margin-bottom: 45px;">
+            <h2 style="color: #111827; border-bottom: 2px solid #e5e7eb; padding-bottom: 12px; margin-top: 0; font-size: 22px; font-weight: 700;">
+              <span style="margin-right: 12px; font-size: 24px;">{icon}</span>{category}
             </h2>
-            <ul style="list-style-type: none; padding-left: 0; margin-top: 15px;">
+            <div style="margin-top: 25px;">
         """
         html_content += get_news(url)
         html_content += """
-            </ul>
+            </div>
           </div>
         """
         
@@ -73,9 +108,11 @@ def generate_html_email():
         </div>
         
         <!-- Footer -->
-        <div style="background-color: #f8f9fa; padding: 25px 20px; text-align: center; border-top: 1px solid #eef2f5;">
-            <p style="margin: 0; font-size: 13px; color: #888;">Generated automatically by your News Agent 🤖</p>
+        <div style="background-color: #e5e7eb; padding: 35px 20px; text-align: center;">
+            <p style="margin: 0; font-size: 14px; color: #4b5563; font-weight: 600;">🤖 Generated autonomously by your News Agent</p>
+            <p style="margin: 10px 0 0 0; font-size: 12px; color: #6b7280;">You are receiving this because you are subscribed to the morning digest.</p>
         </div>
+        
       </div>
     </body>
     </html>
