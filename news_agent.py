@@ -274,7 +274,8 @@ def send_email(html_content: str, text_content: str) -> None:
     recipients = get_recipients()
     subject = f"Daily News Digest - {datetime.now().strftime('%d %b %Y')}"
 
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as server:
+    with smtplib.SMTP("smtp-mail.outlook.com", 587, timeout=30) as server:
+        server.starttls()
         server.login(sender_email, sender_password)
 
         for receiver_email in recipients:
