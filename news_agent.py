@@ -4,13 +4,11 @@ import os
 import re
 import smtplib
 import sys
-from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import parsedate_to_datetime
-from html.parser import HTMLParser
 
 import feedparser
 import requests
@@ -53,14 +51,6 @@ AI_TIPS = [
 
 DEFAULT_LIMIT = int(os.environ.get("NEWS_LIMIT", "5"))
 REQUEST_TIMEOUT_SECONDS = int(os.environ.get("REQUEST_TIMEOUT_SECONDS", "12"))
-SUMMARY_TIMEOUT_SECONDS = int(os.environ.get("SUMMARY_TIMEOUT_SECONDS", "6"))
-SUMMARY_MAX_WORKERS = int(os.environ.get("SUMMARY_MAX_WORKERS", "10"))
-SUMMARY_MAX_CHARS = 160
-
-BROWSER_USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-)
 
 
 @dataclass(frozen=True)
@@ -69,7 +59,6 @@ class Article:
     publisher: str
     link: str
     published: str
-    summary: str = ""
 
 
 def normalize_title(title: str) -> str:
@@ -102,87 +91,6 @@ def format_published(entry) -> str:
         return dt.strftime("%b %d, %H:%M")
     except (TypeError, ValueError, IndexError):
         return published
-
-
-class _MetaDescriptionParser(HTMLParser):
-    """Pulls og:description / description meta tags out of an article page."""
-
-    def __init__(self):
-        super().__init__()
-        self.description = ""
-        self.og_description = ""
-
-    def handle_starttag(self, tag, attrs):
-        if tag.lower() != "meta":
-            return
-
-        attr_dict = {key.lower(): (value or "") for key, value in attrs}
-        content = attr_dict.get("content", "").strip()
-        if not content:
-            return
-
-        if attr_dict.get("property", "").lower() == "og:description":
-            self.og_description = content
-        elif attr_dict.get("name", "").lower() == "description":
-            self.description = content
-
-
-def clean_summary(text: str) -> str:
-    text = html.unescape(text)
-    text = re.sub(r"\s+", " ", text).strip()
-    if len(text) > SUMMARY_MAX_CHARS:
-        text = text[:SUMMARY_MAX_CHARS].rsplit(" ", 1)[0].rstrip(",.;: ") + "…"
-    return text
-
-
-def fetch_article_summary(url: str) -> str:
-    """Best-effort fetch of a publisher's own meta description for an article."""
-    try:
-        response = requests.get(
-            url,
-            timeout=SUMMARY_TIMEOUT_SECONDS,
-            headers={"User-Agent": BROWSER_USER_AGENT},
-            allow_redirects=True,
-        )
-        response.raise_for_status()
-    except requests.RequestException:
-        return ""
-
-    parser = _MetaDescriptionParser()
-    try:
-        parser.feed(response.text[:80_000])
-    except Exception:
-        return ""
-
-    summary = parser.og_description or parser.description
-    return clean_summary(summary) if summary else ""
-
-
-def enrich_with_summaries(news_data: dict[str, list[Article]]) -> dict[str, list[Article]]:
-    targets = [
-        (category, index)
-        for category, articles in news_data.items()
-        for index in range(len(articles))
-    ]
-    if not targets:
-        return news_data
-
-    enriched = {category: list(articles) for category, articles in news_data.items()}
-
-    with ThreadPoolExecutor(max_workers=SUMMARY_MAX_WORKERS) as executor:
-        futures = {
-            executor.submit(fetch_article_summary, enriched[category][index].link): (category, index)
-            for category, index in targets
-        }
-        for future, (category, index) in futures.items():
-            try:
-                summary = future.result()
-            except Exception:
-                summary = ""
-            if summary:
-                enriched[category][index] = replace(enriched[category][index], summary=summary)
-
-    return enriched
 
 
 def fetch_articles(category: str, feed_url: str, seen_titles: set[str], limit: int) -> list[Article]:
@@ -249,12 +157,6 @@ def render_hero_card(article: Article, accent: str) -> str:
     published = html.escape(article.published)
     link = html.escape(article.link, quote=True)
 
-    summary_html = (
-        f'<div style="margin-top: 10px; color: #475569; font-size: 14px; line-height: 1.55;">{html.escape(article.summary)}</div>'
-        if article.summary
-        else ""
-    )
-
     return f"""
       <tr>
         <td style="padding: 0 0 12px 0;">
@@ -265,7 +167,6 @@ def render_hero_card(article: Article, accent: str) -> str:
                 <div style="margin-top: 10px;">
                   <a href="{link}" style="color: #0f172a; text-decoration: none; font-size: 19px; line-height: 1.35; font-weight: 800;">{headline}</a>
                 </div>
-                {summary_html}
                 <div style="padding-top: 14px;">
                   <span style="display: inline-block; color: {accent}; background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 999px; padding: 5px 10px; font-size: 12px; font-weight: 700;">{publisher}</span>
                   <span style="display: inline-block; color: #94a3b8; font-size: 12px; font-weight: 600; padding-left: 8px;">{published}</span>
@@ -284,12 +185,6 @@ def render_compact_card(article: Article, index: int, accent: str) -> str:
     published = html.escape(article.published)
     link = html.escape(article.link, quote=True)
 
-    summary_html = (
-        f'<div style="margin-top: 6px; color: #64748b; font-size: 13px; line-height: 1.5;">{html.escape(article.summary)}</div>'
-        if article.summary
-        else ""
-    )
-
     return f"""
       <tr>
         <td style="padding: 0 0 10px 0;">
@@ -303,7 +198,6 @@ def render_compact_card(article: Article, index: int, accent: str) -> str:
                     </td>
                     <td valign="top">
                       <a href="{link}" style="color: #111827; text-decoration: none; font-size: 14.5px; line-height: 1.4; font-weight: 700;">{headline}</a>
-                      {summary_html}
                       <div style="padding-top: 8px;">
                         <span style="color: {accent}; font-size: 11px; font-weight: 700;">{publisher}</span>
                         <span style="color: #94a3b8; font-size: 11px; font-weight: 600; padding-left: 6px;">· {published}</span>
@@ -461,8 +355,6 @@ def generate_text_email(news_data: dict[str, list[Article]]) -> str:
             lines.append("- No fresh stories available.")
         for index, article in enumerate(articles, start=1):
             lines.append(f"{index}. {article.headline} ({article.publisher})")
-            if article.summary:
-                lines.append(f"   {article.summary}")
             lines.append(f"   {article.link}")
         lines.append("")
 
@@ -514,13 +406,6 @@ def main() -> None:
     article_count = sum(len(articles) for articles in news_data.values())
     if article_count == 0:
         raise RuntimeError("No articles fetched from any feed.")
-
-    print(f"Fetching article summaries for {article_count} article(s)...")
-    news_data = enrich_with_summaries(news_data)
-    summarized_count = sum(
-        1 for articles in news_data.values() for article in articles if article.summary
-    )
-    print(f"Got summaries for {summarized_count}/{article_count} article(s).")
 
     print(f"Rendering digest with {article_count} article(s)...")
     html_email = generate_html_email(news_data)
