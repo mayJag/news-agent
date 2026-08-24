@@ -18,6 +18,8 @@ FEEDS = {
     "Global News": "https://news.google.com/rss/headlines/section/topic/WORLD?hl=en-IN&gl=IN&ceid=IN:en",
     "Indian News": "https://news.google.com/rss?hl=en-IN&gl=IN&ceid=IN:en",
     "Technology": "https://news.google.com/rss/headlines/section/topic/TECHNOLOGY?hl=en-IN&gl=IN&ceid=IN:en",
+    "AI News": "https://news.google.com/rss/search?q=%22artificial+intelligence%22+OR+ChatGPT+OR+OpenAI+OR+Anthropic+OR+%22machine+learning%22+OR+%22AI+model%22&hl=en-IN&gl=IN&ceid=IN:en",
+    "Agentic AI": "https://news.google.com/rss/search?q=%22agentic+AI%22+OR+%22AI+agents%22+OR+%22AI+agent%22+OR+%22autonomous+agents%22+OR+%22multi-agent%22&hl=en-IN&gl=IN&ceid=IN:en",
     "Sports": "https://news.google.com/rss/headlines/section/topic/SPORTS?hl=en-IN&gl=IN&ceid=IN:en",
 }
 
@@ -25,8 +27,27 @@ SECTION_META = {
     "Global News": {"label": "WORLD", "accent": "#2563eb"},
     "Indian News": {"label": "INDIA", "accent": "#059669"},
     "Technology": {"label": "TECH", "accent": "#7c3aed"},
+    "AI News": {"label": "AI", "accent": "#0d9488"},
+    "Agentic AI": {"label": "AGENTS", "accent": "#4f46e5"},
     "Sports": {"label": "SPORTS", "accent": "#ea580c"},
 }
+
+AI_TIPS = [
+    "Break large tasks into smaller sub-goals when prompting an AI agent - it reduces errors compared to one giant instruction.",
+    "Ask your AI assistant to show its reasoning before the final answer - it surfaces mistakes before they reach you.",
+    "Use system prompts to set a persona or constraints once, instead of repeating instructions in every message.",
+    "For coding tasks, give the AI the exact error message and file path - vague descriptions produce vague fixes.",
+    "Agentic AI tools work best with clear success criteria - define what 'done' looks like before letting an agent run autonomously.",
+    "Ask for a plan first, then approval, then execution - this catches wrong assumptions before an agent burns time on the wrong task.",
+    "When comparing AI models, test on your own real examples, not benchmark scores - your use case rarely matches the benchmark.",
+    "Keep a short context file (project goals, conventions, constraints) that you paste or reference at the start of every AI session.",
+    "For long documents, ask the AI to summarize section-by-section rather than all at once - accuracy drops on very long single-pass summaries.",
+    "Multi-agent systems fail most often at handoffs - be explicit about what each agent should pass to the next.",
+    "Use low creativity/temperature settings for factual tasks and higher settings for brainstorming - one setting doesn't fit both.",
+    "Version your prompts like code - small wording changes can silently change output quality.",
+    "When an AI agent has tool access (browsing, code execution), review its first few actions closely - mistakes compound fast once it's autonomous.",
+    "Ask 'what would make this answer wrong?' before trusting an AI's output on anything high-stakes.",
+]
 
 DEFAULT_LIMIT = int(os.environ.get("NEWS_LIMIT", "5"))
 REQUEST_TIMEOUT_SECONDS = int(os.environ.get("REQUEST_TIMEOUT_SECONDS", "12"))
@@ -49,6 +70,11 @@ def normalize_title(title: str) -> str:
 
 def short_digest(value: str) -> str:
     return hashlib.sha1(value.encode("utf-8")).hexdigest()[:10]
+
+
+def get_daily_tip() -> str:
+    day_index = datetime.now().timetuple().tm_yday
+    return AI_TIPS[day_index % len(AI_TIPS)]
 
 
 def format_published(entry) -> str:
@@ -189,6 +215,25 @@ def render_section(category: str, articles: list[Article]) -> str:
     """
 
 
+def render_tip_section(tip: str) -> str:
+    tip_text = html.escape(tip)
+
+    return f"""
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 34px;">
+        <tr>
+          <td style="padding: 0 0 14px 0;">
+            <div style="font-size: 11px; letter-spacing: 1.4px; color: #0f766e; font-weight: 800;">AI TIP OF THE DAY</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 18px; background: #ecfeff; border: 1px solid #a5f3fc; border-radius: 14px; color: #0f172a; font-size: 15px; line-height: 1.6; font-weight: 600;">
+            {tip_text}
+          </td>
+        </tr>
+      </table>
+    """
+
+
 def generate_html_email(news_data: dict[str, list[Article]]) -> str:
     date_str = html.escape(datetime.now().strftime("%A, %B %d"))
     total_articles = sum(len(articles) for articles in news_data.values())
@@ -197,6 +242,7 @@ def generate_html_email(news_data: dict[str, list[Article]]) -> str:
         render_section(category, news_data.get(category, []))
         for category in FEEDS
     )
+    sections += render_tip_section(get_daily_tip())
 
     return f"""<!DOCTYPE html>
 <html>
@@ -252,6 +298,10 @@ def generate_text_email(news_data: dict[str, list[Article]]) -> str:
             lines.append(f"{index}. {article.headline} ({article.publisher})")
             lines.append(f"   {article.link}")
         lines.append("")
+
+    lines.append("AI TIP OF THE DAY")
+    lines.append(get_daily_tip())
+    lines.append("")
 
     lines.append("Generated by your News Agent")
     return "\n".join(lines)
