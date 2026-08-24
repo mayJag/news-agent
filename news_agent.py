@@ -68,10 +68,6 @@ def normalize_title(title: str) -> str:
     return re.sub(r"\s+", " ", title)
 
 
-def slugify(value: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
-
-
 def short_digest(value: str) -> str:
     return hashlib.sha1(value.encode("utf-8")).hexdigest()[:10]
 
@@ -228,7 +224,6 @@ def render_section(category: str, articles: list[Article]) -> str:
     label = html.escape(meta["label"])
     accent = meta["accent"]
     category_text = html.escape(category)
-    anchor_id = slugify(category)
     count_text = f"{len(articles)} stor{'y' if len(articles) == 1 else 'ies'}"
 
     if not articles:
@@ -241,7 +236,7 @@ def render_section(category: str, articles: list[Article]) -> str:
         )
 
     return f"""
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 34px;" id="{anchor_id}">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 34px;">
         <tr>
           <td style="padding: 0 0 14px 0;">
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
@@ -266,7 +261,7 @@ def render_tip_section(tip: str) -> str:
     tip_text = html.escape(tip)
 
     return f"""
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 34px;" id="ai-tip">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 34px;">
         <tr>
           <td style="padding: 0 0 14px 0;">
             <div style="font-size: 11px; letter-spacing: 1.4px; color: #0f766e; font-weight: 800;">AI TIP OF THE DAY</div>
@@ -281,13 +276,13 @@ def render_tip_section(tip: str) -> str:
     """
 
 
-def render_quick_nav() -> str:
-    pills = "".join(
-        f'<a href="#{slugify(category)}" style="display: inline-block; margin: 0 6px 8px 0; padding: 6px 14px; border-radius: 999px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18); color: #e2e8f0; font-size: 12px; font-weight: 700; text-decoration: none;">{html.escape(SECTION_META.get(category, {}).get("label", category))}</a>'
+def render_section_summary() -> str:
+    chips = "".join(
+        f'<span style="display: inline-block; margin: 0 6px 8px 0; padding: 6px 14px; border-radius: 999px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18); color: #e2e8f0; font-size: 12px; font-weight: 700;">{html.escape(SECTION_META.get(category, {}).get("label", category))}</span>'
         for category in FEEDS
     )
-    pills += '<a href="#ai-tip" style="display: inline-block; margin: 0 6px 8px 0; padding: 6px 14px; border-radius: 999px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18); color: #5eead4; font-size: 12px; font-weight: 700; text-decoration: none;">TIP</a>'
-    return f'<div style="padding-top: 16px;">{pills}</div>'
+    chips += '<span style="display: inline-block; margin: 0 6px 8px 0; padding: 6px 14px; border-radius: 999px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18); color: #5eead4; font-size: 12px; font-weight: 700;">TIP</span>'
+    return f'<div style="padding-top: 16px;">{chips}</div>'
 
 
 def generate_html_email(news_data: dict[str, list[Article]]) -> str:
@@ -300,7 +295,7 @@ def generate_html_email(news_data: dict[str, list[Article]]) -> str:
     )
     sections += render_tip_section(get_daily_tip())
 
-    quick_nav = render_quick_nav()
+    section_summary = render_section_summary()
 
     return f"""<!DOCTYPE html>
 <html>
@@ -319,7 +314,7 @@ def generate_html_email(news_data: dict[str, list[Article]]) -> str:
               <div style="color: #93c5fd; font-size: 12px; letter-spacing: 2px; font-weight: 800;">MORNING BRIEFING</div>
               <h1 style="margin: 8px 0 10px 0; color: #ffffff; font-size: 34px; line-height: 1.1; font-weight: 800;">The Daily Digest</h1>
               <div style="color: #cbd5e1; font-size: 15px; line-height: 1.5;">{date_str} · {total_articles} selected stories from Google News</div>
-              {quick_nav}
+              {section_summary}
             </td>
           </tr>
           <tr>
